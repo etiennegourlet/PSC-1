@@ -1,0 +1,117 @@
+import folium
+import googlemaps
+import os
+import datetime
+import pandas as pd
+import openpyxl
+import re
+
+
+def create_map_with_pois(address, api_key, poi_types): #Initialisation du client Google Maps
+    gmaps = googlemaps.Client(key=api_key)  #géocodage de l’adresse
+    geocode_result = gmaps.geocode(address)
+    if not geocode_result:
+        print("Address not found.")
+        return None
+
+    origin_location = geocode_result[0]['geometry']['location']
+    origin_lat = origin_location['lat']
+    origin_lng = origin_location['lng']
+# Création de la carte Folium centée sur l’adresse géocodée
+    
+    map = folium.Map(location=[origin_lat, origin_lng], zoom_start=13)
+    # Ajouter un marqueur pour l’adresse d’origine
+
+    folium.Marker([origin_lat, origin_lng], popup='Origin Address', icon=folium.Icon(color='red')).add_to(map)
+    # Initialisation du tableau pour stocker les données POI
+    poi_data = []
+
+    # Parcourez chaque type de POI
+    for poi_type in poi_types:
+        places_nearby = gmaps.places_nearby(location=f"{origin_lat},{origin_lng}", rank_by="distance", type=poi_type)
+        if places_nearby['results']:
+            closest_poi = places_nearby['results'][0]
+            poi_lat = closest_poi['geometry']['location']['lat']
+            poi_lng = closest_poi['geometry']['location']['lng']
+
+            # Créer le contenu de la boîte d'information
+            poi_info = f"""
+            *{closest_poi['name']}* ({poi_type})
+            - Address: {closest_poi['vicinity']}
+            """
+
+            # Calculer le temps de marche
+            walking_directions = gmaps.directions(origin=(origin_lat, origin_lng), destination=(poi_lat, poi_lng), mode="walking")
+            if walking_directions:
+                walking_duration = walking_directions[0]['legs'][0]['duration']['text']
+                poi_info += f"\n- Walking time: {walking_duration}"
+
+            # Calculer le temps à vélo
+            biking_directions = gmaps.directions(origin=(origin_lat, origin_lng), destination=(poi_lat, poi_lng), mode="bicycling")
+            if biking_directions:
+                biking_duration = biking_directions[0]['legs'][0]['duration']['text']
+                poi_info += f"\n- Biking time: {biking_duration}"
+
+            # Calculer le temps en voiture
+            driving_directions = gmaps.directions(origin=(origin_lat, origin_lng), destination=(poi_lat, poi_lng), mode="driving")
+            if driving_directions:
+                driving_duration = driving_directions[0]['legs'][0]['duration']['text']
+                poi_info += f"\n- Driving time: {driving_duration}"
+
+            # Ajoutez le marqueur avec la boîte d'information contenant les informations du POI
+            folium.Marker([poi_lat, poi_lng], popup=poi_info, icon=folium.Icon(color='blue')).add_to(map)
+
+            # Ajouter les données POI au tableau
+            poi_data.append([closest_poi['types'][0], driving_duration, biking_duration, walking_duration])
+            
+
+
+    for row in poi_data:
+        # Parcourir chaque élément de la ligne
+         for i in range(len(row)):
+        # Remplacer "mins" par une chaîne vide ("")
+          row[i] = row[i].replace("mins", "")
+          row[i] = row[i].replace("min", "")
+
+# Précisez ici le chemin complet où vous souhaitez enregistrer la carte
+ # Par exemple, sauvegarder dans le répertoire utilisateur sous Windows ou home sous Unix/Linux
+
+    home_path = os.path.expanduser("~")  # Retrieves the path of the user's personal directory
+    file_path = os.path.join(home_path, 'Desktop', 'POI_Map_avec_Infos_Trajet.html')  # Change the path if necessary
+    map.save(file_path)
+
+    wb = openpyxl.load_workbook('C:/Users/charl/Desktop/1- COURS/PSC/Indicateur mixité fonctionnelle.xlsx')
+    
+#Créez une nouvelle feuille de calcul et définissez-la comme feuille de calcul active
+
+    ws = wb.create_sheet()
+    ws.title = 'New_Sheet'
+#Ecrire les données sur la nouvelle feuille de calcul
+
+    for row in poi_data:
+        ws.append(row)
+
+    wb.save('C:/Users/charl/Desktop/1- COURS/PSC/Indicateur mixité fonctionnelle.xlsx')
+
+
+    return poi_data, file_path  # Returns the array of data and the path of the map
+
+# Exemple d’utilisation
+api_key = 'AIzaSyCazHUQyTcr6caVf8ciyn1icX8e_IP19oY'
+address = "48.684651, 2.198835"
+poi_types = [
+    "bakery", "supermarket","primary_school","secondary_school", 
+    "pharmacy", "hospital","bar", "cafe","restaurant", 
+    "movie_theater","park","gym","stadium",
+    "clothing_store", "furniture_store",  "home_goods_store",
+    "library", "store"
+]
+
+# Création et sauvegarde de la carte
+file_location, poi_data = create_map_with_pois(address, api_key, poi_types)
+if file_location:
+    print(f"The map was saved at the location: {file_location}")
+    print("POI data:")
+    print(poi_data)
+else:
+    print("Map creation failed.")
